@@ -1,0 +1,65 @@
+{
+  "name": "@monei/mcp-server",
+  "version": "0.1.0",
+  "description": "MONEI MCP Server — Connect your MONEI account to AI assistants (Claude, ChatGPT) via OAuth 2.0",
+  "keywords": [
+    "monei",
+    "mcp",
+    "model-context-protocol",
+    "payments",
+    "oauth",
+    "ai",
+    "claude",
+    "chatgpt"
+  ],
+  "author": "MONEI <hello@monei.com> (https://monei.com)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MONEI/MONEI-MCP-Server.git"
+  },
+  "homepage": "https://github.com/MONEI/MONEI-MCP-Server",
+  "bugs": {
+    "url": "https://github.com/MONEI/MONEI-MCP-Server/issues"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "monei-mcp-server": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.2",
+    "@types/node": "^22.15.2",
+    "@vitest/coverage-v8": "^3.1.1",
+    "eslint": "^9.25.1",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
