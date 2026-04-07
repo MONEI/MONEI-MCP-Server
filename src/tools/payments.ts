@@ -13,8 +13,15 @@ import { z } from "zod";
 
 export const generatePaymentLinkTool = {
   name: "generate_payment_link",
+  title: "Generate Payment Link",
   description:
     "Create a payment link that can be shared with a customer. Returns a URL the customer can use to complete the payment. Supports cards, Bizum, and other MONEI-enabled payment methods.",
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -57,8 +64,15 @@ export const generatePaymentLinkTool = {
 
 export const getPaymentTool = {
   name: "get_payment",
+  title: "Get Payment Details",
   description:
     "Retrieve the full details and current status of a payment by its ID. Returns amount, status, payment method, customer info, and timestamps.",
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -73,8 +87,15 @@ export const getPaymentTool = {
 
 export const listPaymentsTool = {
   name: "list_payments",
+  title: "List Payments",
   description:
     "List and search payments with optional filters. Returns a paginated list of transactions. Useful for checking recent sales, finding specific orders, or reviewing payment history.",
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   inputSchema: {
     type: "object" as const,
     properties: {

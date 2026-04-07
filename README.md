@@ -71,11 +71,22 @@ npm start
 
 The server starts at `http://localhost:3000` with:
 
-- **SSE endpoint:** `/sse` — Connect AI assistants here
+- **Streamable HTTP (recommended):** `/mcp` — Connect AI assistants here
+- **Legacy SSE:** `/sse` — Backward compatibility
 - **Health check:** `/health` — Server status
 - **OAuth:** `/oauth/authorize` — Merchant authorization flow
 
 ## Connecting to Claude
+
+### Claude.ai (Connectors Directory)
+
+Once listed in the Anthropic Connectors Directory, merchants can connect with one click from **Customize → Connectors** in Claude.ai.
+
+For custom connector setup:
+
+1. Go to **Customize → Connectors → Add**
+2. Add your server URL: `https://your-domain.com/mcp`
+3. Complete the OAuth authorization flow
 
 ### Claude Desktop
 
@@ -85,19 +96,17 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "monei": {
-      "url": "http://localhost:3000/sse"
+      "url": "https://your-domain.com/mcp"
     }
   }
 }
 ```
 
-### Claude.ai (Remote MCP)
+### Claude Code
 
-When deployed to a public URL with HTTPS, you can connect directly in Claude.ai:
-
-1. Go to **Settings → Connected Apps**
-2. Add your server URL: `https://your-domain.com/sse`
-3. Complete the OAuth authorization flow
+```bash
+claude mcp add monei --transport http https://your-domain.com/mcp
+```
 
 ## Available Tools
 
@@ -153,33 +162,46 @@ View merchant account details.
 
 ```
 src/
-├── index.ts              # Entry point — HTTP+SSE server + OAuth routes
+├── index.ts              # Entry point — Streamable HTTP + SSE + OAuth routes
 ├── server.ts             # MCP server setup + tool registration
 ├── auth/
-│   └── oauth.ts          # OAuth 2.0 authorization code flow
+│   ├── oauth.ts          # OAuth 2.0 + PKCE + scope validation
+│   ├── pkce.ts           # RFC 7636 PKCE implementation
+│   └── session.ts        # Single-use OAuth state manager (CSRF protection)
 ├── api/
 │   └── monei-client.ts   # MONEI REST API client (allowed ops only)
 ├── tools/
 │   ├── index.ts          # Tool registry + routing + restriction enforcement
-│   ├── payments.ts       # Payment tools (create link, get, list)
-│   ├── subscriptions.ts  # Subscription tools (get, list)
-│   └── account.ts        # Account info tool
+│   ├── payments.ts       # Payment tools with safety annotations
+│   ├── subscriptions.ts  # Subscription tools with safety annotations
+│   └── account.ts        # Account info tool with safety annotations
 ├── middleware/
+│   ├── security.ts       # CORS, HTTPS, session validation, input guard
 │   ├── rate-limiter.ts   # Per-account sliding window rate limiter
 │   └── audit-logger.ts   # Structured JSON audit logging
 └── types/
     └── index.ts          # Shared types + restricted operations registry
+
+tests/
+├── auth/                 # PKCE, session, scope validation tests
+├── middleware/            # Rate limiter, audit logger, security tests
+└── tools/                # Restriction enforcement, routing, validation tests
 ```
 
 ## Roadmap
 
+- [x] Streamable HTTP transport (Anthropic directory requirement)
+- [x] Tool safety annotations (readOnlyHint / destructiveHint)
+- [x] PKCE (RFC 7636) + CSRF state validation
+- [x] Security hardening (Helmet, CORS, rate limiting, audit logging)
+- [x] Comprehensive test suite
 - [ ] Production OAuth 2.0 integration with MONEI auth service
 - [ ] Persistent token storage (Redis/PostgreSQL)
+- [ ] Anthropic Connectors Directory submission
 - [ ] Webhook notifications for payment status changes
-- [ ] Streamable HTTP transport (MCP spec evolution)
 - [ ] Docker container + deploy-to-cloud templates
 - [ ] NPM package publishing (`npx @monei/mcp-server`)
-- [ ] Claude.ai native integration listing
+- [ ] Claude Desktop Extension (.mcpb bundle)
 
 ## API Documentation
 

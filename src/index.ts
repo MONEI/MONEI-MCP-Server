@@ -3,24 +3,22 @@
 /**
  * MONEI MCP Server — Entry Point
  *
- * Starts the MCP server with HTTP+SSE transport and full security stack:
- * - Helmet (security headers)
- * - CORS (strict origin allowlist)
- * - HTTPS enforcement (production)
- * - PKCE + state validation on OAuth
- * - Session validation on /messages
- * - Rate limiting + audit logging on tool calls
- * - Input guards (size, content-type)
+ * Supports both transport modes:
+ *   1. Streamable HTTP on /mcp (recommended, required for Anthropic directory)
+ *   2. SSE on /sse + /messages (backward compatibility)
  *
- * Usage:
- *   npm run dev      # Development with hot reload
- *   npm start        # Production
+ * Security stack:
+ *   Helmet · CORS · HTTPS enforcement · PKCE · Session validation
+ *   Rate limiting · Audit logging · Input guards
  */
 
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import express, { type Request, type Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
+import { randomUUID } from "node:crypto";
 import { createMcpServer } from "./server.js";
 import {
   getAuthorizationUrl,
@@ -31,7 +29,6 @@ import {
 import {
   getCorsOptions,
   httpsEnforcement,
-  createSessionValidator,
   inputGuard,
   requireApiKeyInDev,
 } from "./middleware/security.js";
@@ -57,15 +54,10 @@ const config: ServerConfig = {
 
 const app = express();
 
-// Store active SSE transports (used for session validation)
-const transports = new Map<string, SSEServerTransport>();
-
 // ─── Security Middleware Stack ──────────────────────────────
 
-// 1. HTTPS enforcement in production
 app.use(httpsEnforcement());
 
-// 2. Helmet — secure HTTP headers (CSP, X-Frame-Options, etc.)
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -74,21 +66,22 @@ app.use(
         connectSrc: ["'self'"],
       },
     },
-    crossOriginEmbedderPolicy: false, // Allow SSE connections
+    crossOriginEmbedderPolicy: false,
   })
 );
 
-// 3. CORS — strict origin allowlist
 app.use(cors(getCorsOptions()));
-
-// 4. JSON body parser with 1MB limit
 app.use(express.json({ limit: "1mb" }));
-
-// 5. Input guard — reject non-JSON POSTs
 app.use(inputGuard());
-
-// 6. Dev-mode API key check
 app.use(requireApiKeyInDev());
+
+// ─── Transport Stores ──────────────────────────────────────
+
+// Streamable HTTP sessions (primary)
+const streamableTransports = new Map<string, StreamableHTTPServerTransport>();
+
+// Legacy SSE sessions (backward compat)
+const sseTransports = new Map<string, SSEServerTransport>();
 
 // ─── Health Check ───────────────────────────────────────────
 
@@ -98,41 +91,121 @@ app.get("/health", (_req: Request, res: Response) => {
     server: "MONEI MCP Server",
     version: "0.1.0",
     timestamp: new Date().toISOString(),
-    activeSessions: transports.size,
+    transports: {
+      streamableHttp: streamableTransports.size,
+      sse: sseTransports.size,
+    },
   });
 });
 
-// ─── MCP SSE Endpoint ───────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+//  STREAMABLE HTTP TRANSPORT — /mcp (Primary, Anthropic Directory)
+// ═══════════════════════════════════════════════════════════════
+
+app.post("/mcp", async (req: Request, res: Response) => {
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+  // Reuse existing session
+  if (sessionId && streamableTransports.has(sessionId)) {
+    const transport = streamableTransports.get(sessionId)!;
+    await transport.handleRequest(req, res, req.body);
+    return;
+  }
+
+  // New session — only on initialize request
+  if (!sessionId && isInitializeRequest(req.body)) {
+    const server = createMcpServer(config);
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+    });
+
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+
+    // Store transport after first request (session ID now available)
+    const newSessionId = transport.sessionId;
+    if (newSessionId) {
+      streamableTransports.set(newSessionId, transport);
+      console.log(`[MCP/HTTP] New session: ${newSessionId}`);
+    }
+    return;
+  }
+
+  // Invalid request
+  res.status(400).json({
+    error: "Bad Request",
+    message: sessionId
+      ? "Unknown session. It may have expired."
+      : "First request must be an initialize request.",
+  });
+});
+
+// GET /mcp — Server-to-client SSE stream (notifications)
+app.get("/mcp", async (req: Request, res: Response) => {
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+  if (!sessionId || !streamableTransports.has(sessionId)) {
+    res.status(400).json({ error: "Invalid or missing session ID" });
+    return;
+  }
+
+  const transport = streamableTransports.get(sessionId)!;
+  await transport.handleRequest(req, res);
+});
+
+// DELETE /mcp — Session termination
+app.delete("/mcp", async (req: Request, res: Response) => {
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+  if (!sessionId || !streamableTransports.has(sessionId)) {
+    res.status(404).json({ error: "Session not found" });
+    return;
+  }
+
+  streamableTransports.delete(sessionId);
+  console.log(`[MCP/HTTP] Session terminated: ${sessionId}`);
+  res.status(204).end();
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  LEGACY SSE TRANSPORT — /sse + /messages (Backward Compat)
+// ═══════════════════════════════════════════════════════════════
 
 app.get("/sse", async (req: Request, res: Response) => {
-  console.log("[MCP] New SSE connection");
+  console.log("[MCP/SSE] New SSE connection");
 
   const server = createMcpServer(config);
   const transport = new SSEServerTransport("/messages", res);
   const sessionId = transport.sessionId;
 
-  transports.set(sessionId, transport);
+  sseTransports.set(sessionId, transport);
 
   res.on("close", () => {
-    console.log(`[MCP] SSE connection closed: ${sessionId}`);
-    transports.delete(sessionId);
+    console.log(`[MCP/SSE] Connection closed: ${sessionId}`);
+    sseTransports.delete(sessionId);
   });
 
   await server.connect(transport);
 });
 
-// Session-validated /messages endpoint
-app.post(
-  "/messages",
-  createSessionValidator(transports),
-  async (req: Request, res: Response) => {
-    const sessionId = req.query.sessionId as string;
-    const transport = transports.get(sessionId)!;
-    await transport.handlePostMessage(req, res);
-  }
-);
+app.post("/messages", async (req: Request, res: Response) => {
+  const sessionId = req.query.sessionId as string;
 
-// ─── OAuth 2.0 Endpoints ───────────────────────────────────
+  if (!sessionId || !sseTransports.has(sessionId)) {
+    res.status(401).json({
+      error: "Invalid or expired session",
+      hint: "Connect via /sse or /mcp first.",
+    });
+    return;
+  }
+
+  const transport = sseTransports.get(sessionId)!;
+  await transport.handlePostMessage(req, res);
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  OAUTH 2.0 ENDPOINTS
+// ═══════════════════════════════════════════════════════════════
 
 /**
  * GET /oauth/authorize
@@ -148,6 +221,12 @@ app.get("/oauth/authorize", (_req: Request, res: Response) => {
  * GET /oauth/callback
  * Handles the OAuth callback. Validates state (CSRF) and
  * exchanges code + PKCE verifier for scoped tokens.
+ *
+ * Registered callback URLs:
+ *   - https://claude.ai/api/mcp/auth_callback
+ *   - https://claude.com/api/mcp/auth_callback
+ *   - http://localhost:6274/oauth/callback (Claude Code / MCP Inspector)
+ *   - http://localhost:{PORT}/oauth/callback (development)
  */
 app.get("/oauth/callback", async (req: Request, res: Response) => {
   const { code, state, error, error_description } = req.query;
@@ -174,7 +253,6 @@ app.get("/oauth/callback", async (req: Request, res: Response) => {
   try {
     const tokens = await exchangeCodeForTokens(config, code, state);
 
-    // In production, redirect to a success page instead of returning JSON
     res.json({
       success: true,
       message:
@@ -204,8 +282,6 @@ app.get("/oauth/callback", async (req: Request, res: Response) => {
 
 /**
  * POST /oauth/revoke
- * Revokes a merchant's OAuth connection.
- * Requires the accountId in the request body.
  */
 app.post("/oauth/revoke", (req: Request, res: Response) => {
   const { accountId } = req.body as { accountId?: string };
@@ -215,7 +291,6 @@ app.post("/oauth/revoke", (req: Request, res: Response) => {
     return;
   }
 
-  // TODO: Also call MONEI's token revocation endpoint
   const revoked = revokeTokens(accountId);
 
   if (!revoked) {
@@ -235,7 +310,7 @@ app.post("/oauth/revoke", (req: Request, res: Response) => {
 app.use((_req: Request, res: Response) => {
   res.status(404).json({
     error: "Not found",
-    hint: "MONEI MCP Server endpoints: /sse, /messages, /health, /oauth/authorize",
+    hint: "MONEI MCP Server endpoints: /mcp (recommended), /sse (legacy), /health, /oauth/authorize",
   });
 });
 
@@ -247,10 +322,16 @@ app.listen(config.port, config.host, () => {
   console.log("  ║       MONEI MCP Server v0.1.0        ║");
   console.log("  ╚══════════════════════════════════════╝");
   console.log("");
-  console.log(`  → HTTP+SSE:  http://${config.host}:${config.port}/sse`);
-  console.log(`  → Messages:  http://${config.host}:${config.port}/messages`);
-  console.log(`  → Health:    http://${config.host}:${config.port}/health`);
-  console.log(`  → OAuth:     http://${config.host}:${config.port}/oauth/authorize`);
+  console.log(`  Streamable HTTP (recommended):`);
+  console.log(`    → POST/GET/DELETE http://${config.host}:${config.port}/mcp`);
+  console.log("");
+  console.log(`  Legacy SSE (backward compat):`);
+  console.log(`    → GET  http://${config.host}:${config.port}/sse`);
+  console.log(`    → POST http://${config.host}:${config.port}/messages`);
+  console.log("");
+  console.log(`  Other:`);
+  console.log(`    → Health:  http://${config.host}:${config.port}/health`);
+  console.log(`    → OAuth:   http://${config.host}:${config.port}/oauth/authorize`);
   console.log("");
   console.log("  Security: Helmet ✓ | CORS ✓ | PKCE ✓ | Rate Limit ✓ | Audit ✓");
   console.log("");

@@ -26,10 +26,12 @@ export function getAllowedOrigins(): string[] {
   // Defaults: Claude, ChatGPT, and localhost for dev
   return [
     "https://claude.ai",
+    "https://claude.com",
     "https://chat.openai.com",
     "https://chatgpt.com",
     "http://localhost:3000",
     "http://localhost:5173",
+    "http://localhost:6274",
   ];
 }
 
@@ -53,7 +55,7 @@ export function getCorsOptions() {
       }
     },
     credentials: true,
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
     maxAge: 86400, // 24 hours preflight cache
   };

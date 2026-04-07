@@ -12,8 +12,15 @@ import { z } from "zod";
 
 export const getSubscriptionTool = {
   name: "get_subscription",
+  title: "Get Subscription Details",
   description:
     "Retrieve the full details and current status of a subscription by its ID. Returns amount, interval, status, and billing period information.",
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -28,8 +35,15 @@ export const getSubscriptionTool = {
 
 export const listSubscriptionsTool = {
   name: "list_subscriptions",
+  title: "List Subscriptions",
   description:
     "List subscriptions with optional filters. Returns active, paused, and past subscriptions.",
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   inputSchema: {
     type: "object" as const,
     properties: {
