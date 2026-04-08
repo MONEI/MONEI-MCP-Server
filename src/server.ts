@@ -24,7 +24,7 @@ export function createMcpServer(config: ServerConfig): McpServer {
         : []
     );
 
-    for (const [key, prop] of Object.entries(props) as [string, any][]) {
+    for (const [key, prop] of Object.entries(props as Record<string, any>)) {
       let field: z.ZodTypeAny;
       if (prop.type === "number") {
         field = z.number().describe(prop.description ?? "");
