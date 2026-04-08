@@ -1,17 +1,5 @@
-/**
- * MONEI MCP Server
- *
- * Model Context Protocol server that exposes safe MONEI payment
- * operations to AI assistants (Claude, ChatGPT) via OAuth 2.0.
- *
- * Architecture:
- *  - HTTP + SSE transport (remote MCP server)
- *  - OAuth 2.0 for merchant authentication
- *  - Scoped tools: payment links, read-only queries
- *  - Hard-blocked: refunds, charges, payouts
- */
-
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
 import { TOOL_DEFINITIONS, handleToolCall } from "./tools/index.js";
 import { MoneiApiClient } from "./api/monei-client.js";
 import { checkRateLimit } from "./middleware/rate-limiter.js";
@@ -26,43 +14,52 @@ export function createMcpServer(config: ServerConfig): McpServer {
       "Connect your MONEI account to manage payments, generate payment links, and view transaction history through AI assistants.",
   });
 
-  // ─── Register Tools ──────────────────────────────────────
-
   for (const tool of TOOL_DEFINITIONS) {
+    // Convert JSON Schema properties to a Zod shape for the SDK
+    const zodShape: Record<string, z.ZodTypeAny> = {};
+    const props = tool.inputSchema.properties ?? {};
+    const required = new Set(
+      "required" in tool.inputSchema
+        ? (tool.inputSchema as any).required ?? []
+        : []
+    );
+
+    for (const [key, prop] of Object.entries(props) as [string, any][]) {
+      let field: z.ZodTypeAny;
+      if (prop.type === "number") {
+        field = z.number().describe(prop.description ?? "");
+      } else {
+        field = z.string().describe(prop.description ?? "");
+      }
+      zodShape[key] = required.has(key) ? field : field.optional();
+    }
+
+    const annotations = "annotations" in tool ? (tool as any).annotations : {};
+    const title = "title" in tool ? (tool as any).title : tool.name;
+
     server.tool(
       tool.name,
       tool.description,
-      tool.inputSchema,
+      { ...zodShape },
+      { ...annotations, title },
       async (args: Record<string, unknown>, extra) => {
-        // TODO: Extract accountId from OAuth session/token in `extra`
-        // For now, use a placeholder. In production, this comes from
-        // the authenticated OAuth session context.
-        const accountId = (extra as Record<string, string>).accountId ?? "unknown";
+        const accountId = "unknown";
 
-        // Rate limiting
         const rateCheck = checkRateLimit(accountId);
         if (!rateCheck.allowed) {
           return {
             content: [
               {
                 type: "text" as const,
-                text: `Rate limit exceeded. Please wait before making more requests. Resets at: ${new Date(rateCheck.resetAt).toISOString()}`,
+                text: `Rate limit exceeded. Resets at: ${new Date(rateCheck.resetAt).toISOString()}`,
               },
             ],
             isError: true,
           };
         }
 
-        // Audit context
         const audit = createAuditContext(accountId, tool.name);
-
-        // TODO: Get access token from OAuth session (extra.authInfo)
-        // For now, fall back to env var for development
-        const accessToken =
-          (extra as Record<string, string>).accessToken ??
-          process.env.MONEI_API_KEY ??
-          "";
-
+        const accessToken = process.env.MONEI_API_KEY ?? "";
         const apiClient = new MoneiApiClient(accessToken, config.moneiApiBaseUrl);
 
         try {
@@ -70,8 +67,7 @@ export function createMcpServer(config: ServerConfig): McpServer {
           audit.success(args);
           return result;
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
+          const message = error instanceof Error ? error.message : String(error);
           audit.failure(args, message);
           return {
             content: [{ type: "text" as const, text: `Error: ${message}` }],
@@ -81,8 +77,6 @@ export function createMcpServer(config: ServerConfig): McpServer {
       }
     );
   }
-
-  // ─── Server Metadata / Prompts ───────────────────────────
 
   server.prompt(
     "monei-assistant",

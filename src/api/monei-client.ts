@@ -157,7 +157,7 @@ export class MoneiApiClient {
     return (await response.json()) as T;
   }
 
-  private toQueryString(params: Record<string, unknown>): string {
+  private toQueryString(params: Record<string, any>): string {
     const entries = Object.entries(params).filter(
       ([, v]) => v !== undefined && v !== null
     );
