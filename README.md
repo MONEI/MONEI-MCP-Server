@@ -1,33 +1,43 @@
 # MONEI MCP Server
 
+[![CI](https://github.com/MONEI/MONEI-MCP-Server/actions/workflows/ci.yml/badge.svg)](https://github.com/MONEI/MONEI-MCP-Server/actions/workflows/ci.yml)
+[![Schema Check](https://github.com/MONEI/MONEI-MCP-Server/actions/workflows/schema-check.yml/badge.svg)](https://github.com/MONEI/MONEI-MCP-Server/actions/workflows/schema-check.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js)](https://nodejs.org/)
+[![MCP](https://img.shields.io/badge/MCP-Streamable_HTTP-8B5CF6)](https://modelcontextprotocol.io)
+
 Connect your [MONEI](https://monei.com) payment account to AI assistants like [Claude](https://claude.ai) and ChatGPT using the [Model Context Protocol](https://modelcontextprotocol.io).
 
-Generate payment links, check transaction status, and browse your payment history — all through natural language conversation.
+Generate payment links, check transaction status, view analytics, and browse your payment history — all through natural language.
+
+> **Live at** [`mcp.monei.com`](https://mcp.monei.com)
 
 ## Features
 
-- **🔗 Payment Links** — Create and share payment links with customers via AI
-- **🔍 Transaction Lookup** — Get payment details and status by ID
-- **📊 Payment History** — Search and filter your transaction history
-- **📋 Subscriptions** — View subscription details and status
-- **🏢 Account Info** — Access your merchant account configuration
-- **🔐 OAuth 2.0** — Secure merchant authentication with scoped permissions
-- **🛡️ Guardrails** — Restricted operations are hard-blocked, not just hidden
+- **Payment Links** — Create and send payment links to customers
+- **Transaction Lookup** — Get payment details and status by ID
+- **Payment History** — Search and filter your transaction history
+- **Analytics & KPIs** — View revenue, success rates, and time-series data
+- **Subscriptions** — View subscription details and status
+- **Account Info** — Check enabled payment methods and configuration
+- **OAuth 2.0 + PKCE** — Secure merchant authentication with scoped permissions
+- **GraphQL Native** — Direct integration with MONEI's AppSync GraphQL API
+- **Guardrails** — Restricted operations are hard-blocked, not just hidden
 
 ## Security by Design
 
-This server enforces strict guardrails on what operations AI assistants can perform. The following operations are **explicitly blocked** at the server level:
+This server enforces strict guardrails on what AI assistants can do:
 
 | Blocked Operation | Reason |
-|---|---|
+| --- | --- |
 | Refund payments | Financial risk — use [MONEI Dashboard](https://dashboard.monei.com) |
-| Charge cards/Bizum | Requires PCI context and cardholder consent flows |
-| Card payouts | Funds disbursement requires compliance controls |
-| Bizum payouts | Outbound money movement requires compliance controls |
-| Cancel subscriptions | Destructive action — use Dashboard |
-| Modify account settings | Security-sensitive — use Dashboard |
+| Capture/cancel payments | Requires authorization context |
+| Charge cards/Bizum | Requires PCI context and cardholder consent |
+| Card/Bizum payouts | Funds disbursement requires compliance controls |
+| Cancel subscriptions | Destructive — use Dashboard |
+| Modify account/API keys | Security-sensitive — use Dashboard |
 
-Even if a tool call is crafted manually, restricted endpoints will reject it with a clear explanation and redirect to the Dashboard.
+Even if a tool call is crafted manually, restricted operations are rejected with a clear explanation.
 
 ## Quick Start
 
@@ -50,53 +60,44 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` with your MONEI credentials:
+Edit `.env` with your credentials:
 
-```env
-MONEI_CLIENT_ID=your_client_id
-MONEI_CLIENT_SECRET=your_client_secret
-MONEI_API_KEY=your_api_key  # For development/testing
+```ini
+MONEI_API_KEY=your_api_key_here
+MONEI_GRAPHQL_ENDPOINT=https://graphql.monei.com  # default
 ```
 
 ### Run
 
 ```bash
-# Development (with hot reload)
-npm run dev
-
-# Production
-npm run build
-npm start
+npm run dev      # Development with hot reload
+npm run build && npm start   # Production
 ```
 
-The server starts at `http://localhost:3000` with:
+The server starts with:
 
-- **Streamable HTTP (recommended):** `/mcp` — Connect AI assistants here
-- **Legacy SSE:** `/sse` — Backward compatibility
-- **Health check:** `/health` — Server status
-- **OAuth:** `/oauth/authorize` — Merchant authorization flow
+| Endpoint | Transport |
+| --- | --- |
+| `/mcp` | Streamable HTTP (recommended) |
+| `/sse` | Legacy SSE |
+| `/health` | Health check |
+| `/oauth/authorize` | OAuth 2.0 flow |
 
 ## Connecting to Claude
 
-### Claude.ai (Connectors Directory)
-
-Once listed in the Anthropic Connectors Directory, merchants can connect with one click from **Customize → Connectors** in Claude.ai.
-
-For custom connector setup:
+### Claude.ai
 
 1. Go to **Customize → Connectors → Add**
-2. Add your server URL: `https://your-domain.com/mcp`
-3. Complete the OAuth authorization flow
+2. Enter: `https://mcp.monei.com/mcp`
+3. Complete the OAuth authorization
 
 ### Claude Desktop
-
-Add to your `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "monei": {
-      "url": "https://your-domain.com/mcp"
+      "url": "https://mcp.monei.com/mcp"
     }
   }
 }
@@ -105,107 +106,77 @@ Add to your `claude_desktop_config.json`:
 ### Claude Code
 
 ```bash
-claude mcp add monei --transport http https://your-domain.com/mcp
+claude mcp add monei --transport http https://mcp.monei.com/mcp
 ```
 
 ## Available Tools
 
-### `generate_payment_link`
-
-Create a shareable payment URL.
-
-```
-"Generate a €25 payment link for order #1234 — customer is alex@example.com"
-```
-
-### `get_payment`
-
-Retrieve payment details by ID.
-
-```
-"What's the status of payment abc123?"
-```
-
-### `list_payments`
-
-Search and filter transaction history.
-
-```
-"Show me all successful payments from last week"
-```
-
-### `get_subscription`
-
-View subscription details.
-
-```
-"Get the details of subscription sub_xyz"
-```
-
-### `list_subscriptions`
-
-Browse subscriptions.
-
-```
-"List all active subscriptions"
-```
-
-### `get_account_info`
-
-View merchant account details.
-
-```
-"What payment methods do I have enabled?"
-```
+| Tool | Type | Description |
+| --- | --- | --- |
+| `generate_payment_link` | Write | Create a shareable payment URL |
+| `send_payment_link` | Write | Send a payment link via email or SMS |
+| `get_payment` | Read | Get payment details by ID |
+| `list_payments` | Read | Search and filter transaction history |
+| `get_payments_kpi` | Read | Revenue analytics for a date range |
+| `get_subscription` | Read | View subscription details |
+| `list_subscriptions` | Read | Browse subscriptions |
+| `get_account_info` | Read | Account config and payment methods |
 
 ## Architecture
 
 ```
 src/
-├── index.ts              # Entry point — Streamable HTTP + SSE + OAuth routes
-├── server.ts             # MCP server setup + tool registration
-├── auth/
-│   ├── oauth.ts          # OAuth 2.0 + PKCE + scope validation
-│   ├── pkce.ts           # RFC 7636 PKCE implementation
-│   └── session.ts        # Single-use OAuth state manager (CSRF protection)
+├── index.ts              # Entry — Streamable HTTP + SSE + OAuth
+├── server.ts             # MCP server + tool registration
 ├── api/
-│   └── monei-client.ts   # MONEI REST API client (allowed ops only)
+│   └── monei-client.ts   # MONEI GraphQL API client
 ├── tools/
-│   ├── index.ts          # Tool registry + routing + restriction enforcement
-│   ├── payments.ts       # Payment tools with safety annotations
-│   ├── subscriptions.ts  # Subscription tools with safety annotations
-│   └── account.ts        # Account info tool with safety annotations
+│   ├── index.ts          # Tool registry + routing + restrictions
+│   ├── payments.ts       # Payment + KPI + send link tools
+│   ├── subscriptions.ts  # Subscription tools
+│   └── account.ts        # Account info tool
+├── auth/
+│   ├── oauth.ts          # OAuth 2.0 + PKCE
+│   ├── pkce.ts           # RFC 7636 implementation
+│   └── session.ts        # Single-use state manager (CSRF)
 ├── middleware/
-│   ├── security.ts       # CORS, HTTPS, session validation, input guard
-│   ├── rate-limiter.ts   # Per-account sliding window rate limiter
-│   └── audit-logger.ts   # Structured JSON audit logging
+│   ├── security.ts       # CORS, headers, input guard
+│   ├── rate-limiter.ts   # Per-account sliding window
+│   └── audit-logger.ts   # Structured JSON audit log
 └── types/
-    └── index.ts          # Shared types + restricted operations registry
+    └── index.ts          # Types + restricted operations registry
 
-tests/
-├── auth/                 # PKCE, session, scope validation tests
-├── middleware/            # Rate limiter, audit logger, security tests
-└── tools/                # Restriction enforcement, routing, validation tests
+.github/
+├── workflows/
+│   ├── ci.yml            # Tests on every PR (Node 18/20/22)
+│   └── schema-check.yml  # Weekly GraphQL introspection diff
+└── dependabot.yml        # Weekly dependency updates
 ```
 
-## Roadmap
+## CI/CD
 
-- [x] Streamable HTTP transport (Anthropic directory requirement)
-- [x] Tool safety annotations (readOnlyHint / destructiveHint)
-- [x] PKCE (RFC 7636) + CSRF state validation
-- [x] Security hardening (Helmet, CORS, rate limiting, audit logging)
-- [x] Comprehensive test suite
-- [ ] Production OAuth 2.0 integration with MONEI auth service
-- [ ] Persistent token storage (Redis/PostgreSQL)
-- [ ] Anthropic Connectors Directory submission
-- [ ] Webhook notifications for payment status changes
-- [ ] Docker container + deploy-to-cloud templates
-- [ ] NPM package publishing (`npx @monei/mcp-server`)
-- [ ] Claude Desktop Extension (.mcpb bundle)
+| Workflow | Trigger | Purpose |
+| --- | --- | --- |
+| **CI** | Every PR + push to main | TypeScript check, tests, build (Node 18/20/22) |
+| **Schema Check** | Weekly (Monday 09:00 UTC) | Introspects MONEI GraphQL API, opens issue on new operations |
+| **Dependabot** | Weekly | npm + GitHub Actions dependency updates |
+
+## GraphQL Migration (v0.2.0)
+
+As of v0.2.0, the server communicates exclusively with MONEI's GraphQL API at `https://graphql.monei.com` (AWS AppSync). The previous REST client (`api.monei.com/v1`) has been removed.
+
+Key changes from v0.1.0:
+
+- `getAccountInfo` now uses the GraphQL `account` query (the REST `/merchants/me` endpoint never existed)
+- Payment operations use `charge`/`charges`/`createPayment` GraphQL queries/mutations
+- New `get_payments_kpi` tool via `chargesDateRangeKPI` query
+- New `send_payment_link` tool via `sendPaymentLink` mutation
+- Weekly schema drift detection via GraphQL introspection
 
 ## API Documentation
 
-- [MONEI API Reference](https://docs.monei.com/api)
+- [MONEI GraphQL API](https://docs.monei.com/apis/graphql/)
+- [MONEI REST API](https://docs.monei.com/apis/rest/)
 - [MONEI Postman Collection](https://postman.monei.com)
 - [MCP Specification](https://modelcontextprotocol.io)
 

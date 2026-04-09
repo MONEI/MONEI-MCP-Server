@@ -1,22 +1,18 @@
-/**
- * Account Tools
- *
- * MCP tools for account operations (READ-ONLY):
- * ✅ get_account_info — Retrieve merchant account details
- */
-export declare const getAccountInfoTool: {
+import type { MoneiGraphQLClient } from "../api/monei-client.js";
+export declare const accountToolDefinitions: {
     name: string;
-    title: string;
     description: string;
+    inputSchema: {
+        type: "object";
+        properties: {};
+    };
     annotations: {
+        title: string;
         readOnlyHint: boolean;
         destructiveHint: boolean;
         idempotentHint: boolean;
         openWorldHint: boolean;
     };
-    inputSchema: {
-        type: "object";
-        properties: {};
-    };
-};
+}[];
+export declare function handleAccountTool(toolName: string, _args: Record<string, unknown>, client: MoneiGraphQLClient): Promise<unknown>;
 //# sourceMappingURL=account.d.ts.map

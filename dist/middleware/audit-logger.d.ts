@@ -1,30 +1,13 @@
-/**
- * Audit Logger
- *
- * Logs every MCP tool invocation for compliance and debugging.
- * Each entry captures who did what, when, and whether it succeeded.
- *
- * TODO: Replace with structured logging (e.g., Pino) and
- * external log sink (CloudWatch, Datadog, etc.) for production.
- */
-export interface AuditLogEntry {
+export interface AuditEntry {
     timestamp: string;
-    accountId: string;
-    toolName: string;
-    params: Record<string, unknown>;
+    tool: string;
+    accountId?: string;
+    args: Record<string, unknown>;
     success: boolean;
-    error?: string;
     durationMs: number;
+    error?: string;
 }
-/**
- * Log a tool invocation to stdout (structured JSON)
- */
-export declare function logToolCall(entry: AuditLogEntry): void;
-/**
- * Create a timing wrapper for tool calls
- */
-export declare function createAuditContext(accountId: string, toolName: string): {
-    success(params: Record<string, unknown>): void;
-    failure(params: Record<string, unknown>, error: string): void;
-};
+export declare function logToolCall(entry: AuditEntry): void;
+export declare function getRecentAuditEntries(count?: number): AuditEntry[];
+export declare function withAudit<T>(tool: string, args: Record<string, unknown>, accountId: string | undefined, fn: () => Promise<T>): Promise<T>;
 //# sourceMappingURL=audit-logger.d.ts.map

@@ -1,23 +1,14 @@
-/**
- * Account Tools
- *
- * MCP tools for account operations (READ-ONLY):
- * ✅ get_account_info — Retrieve merchant account details
- */
-// ─── Tool Definitions ────────────────────────────────────────
-export const getAccountInfoTool = {
-    name: "get_account_info",
-    title: "Get Account Info",
-    description: "Retrieve your MONEI merchant account information including business name, supported payment methods, and account configuration.",
-    annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false,
+export const accountToolDefinitions = [
+    {
+        name: "get_account_info",
+        description: "Get merchant account information including business details, enabled payment methods, status, and default currency.",
+        inputSchema: { type: "object", properties: {} },
+        annotations: { title: "Get Account Info", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    inputSchema: {
-        type: "object",
-        properties: {},
-    },
-};
+];
+export async function handleAccountTool(toolName, _args, client) {
+    if (toolName === "get_account_info")
+        return client.getAccount();
+    throw new Error(`Unknown account tool: ${toolName}`);
+}
 //# sourceMappingURL=account.js.map

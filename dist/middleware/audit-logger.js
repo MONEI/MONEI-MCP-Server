@@ -1,52 +1,22 @@
-/**
- * Audit Logger
- *
- * Logs every MCP tool invocation for compliance and debugging.
- * Each entry captures who did what, when, and whether it succeeded.
- *
- * TODO: Replace with structured logging (e.g., Pino) and
- * external log sink (CloudWatch, Datadog, etc.) for production.
- */
-/**
- * Log a tool invocation to stdout (structured JSON)
- */
+const auditLog = [];
 export function logToolCall(entry) {
-    const logLine = {
-        level: entry.success ? "info" : "error",
-        service: "monei-mcp-server",
-        event: "tool_call",
-        ...entry,
-    };
-    // Structured JSON log to stdout
-    console.log(JSON.stringify(logLine));
+    console.log(JSON.stringify({ type: "audit", ...entry }));
+    auditLog.push(entry);
+    if (auditLog.length > 10000)
+        auditLog.splice(0, auditLog.length - 10000);
 }
-/**
- * Create a timing wrapper for tool calls
- */
-export function createAuditContext(accountId, toolName) {
-    const startTime = Date.now();
-    return {
-        success(params) {
-            logToolCall({
-                timestamp: new Date().toISOString(),
-                accountId,
-                toolName,
-                params,
-                success: true,
-                durationMs: Date.now() - startTime,
-            });
-        },
-        failure(params, error) {
-            logToolCall({
-                timestamp: new Date().toISOString(),
-                accountId,
-                toolName,
-                params,
-                success: false,
-                error,
-                durationMs: Date.now() - startTime,
-            });
-        },
-    };
+export function getRecentAuditEntries(count = 50) { return auditLog.slice(-count); }
+export async function withAudit(tool, args, accountId, fn) {
+    const start = Date.now();
+    try {
+        const result = await fn();
+        logToolCall({ timestamp: new Date().toISOString(), tool, accountId, args, success: true, durationMs: Date.now() - start });
+        return result;
+    }
+    catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logToolCall({ timestamp: new Date().toISOString(), tool, accountId, args, success: false, durationMs: Date.now() - start, error: msg });
+        throw error;
+    }
 }
 //# sourceMappingURL=audit-logger.js.map

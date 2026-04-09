@@ -1,30 +1,22 @@
-/**
- * Tool Registry
- *
- * Central registry for all MCP tools. Handles:
- * - Registration of allowed tools
- * - Routing tool calls to the appropriate handler
- * - Blocking restricted operations with clear messages
- */
-import type { MoneiApiClient } from "../api/monei-client.js";
-export declare const TOOL_DEFINITIONS: {
+import type { MoneiGraphQLClient } from "../api/monei-client.js";
+export declare const ALL_TOOL_DEFINITIONS: {
     name: string;
-    title: string;
     description: string;
+    inputSchema: {
+        type: "object";
+        properties: {};
+    };
     annotations: {
+        title: string;
         readOnlyHint: boolean;
         destructiveHint: boolean;
         idempotentHint: boolean;
         openWorldHint: boolean;
     };
-    inputSchema: {
-        type: "object";
-        properties: {};
-    };
 }[];
-export declare function handleToolCall(toolName: string, args: Record<string, unknown>, apiClient: MoneiApiClient): Promise<{
+export declare function handleToolCall(toolName: string, args: Record<string, unknown>, client: MoneiGraphQLClient): Promise<{
     content: Array<{
-        type: "text";
+        type: string;
         text: string;
     }>;
     isError?: boolean;

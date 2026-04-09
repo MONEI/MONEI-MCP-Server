@@ -1,13 +1,30 @@
 /**
- * MONEI API Client
+ * MONEI GraphQL API Client
  *
- * Lightweight wrapper around the MONEI REST API.
- * Only exposes methods for ALLOWED operations.
+ * All MONEI operations go through the GraphQL API at https://graphql.monei.com
+ * This replaces the previous REST client that used api.monei.com/v1.
  *
- * @see https://docs.monei.com/api
+ * Authentication: API Key passed as Authorization header.
+ * Docs: https://docs.monei.com/apis/graphql/
  */
-import type { MoneiPayment, MoneiSubscription, MoneiListResponse } from "../types/index.js";
-export interface CreatePaymentLinkParams {
+export interface GraphQLResponse<T = unknown> {
+    data?: T;
+    errors?: Array<{
+        message: string;
+        errorType?: string;
+    }>;
+}
+export interface MoneiClientConfig {
+    apiKey: string;
+    graphqlEndpoint?: string;
+}
+export interface ChargeFilters {
+    status?: string;
+    search?: string;
+    size?: number;
+    from?: number;
+}
+export interface CreatePaymentInput {
     amount: number;
     currency: string;
     orderId?: string;
@@ -20,56 +37,38 @@ export interface CreatePaymentLinkParams {
     callbackUrl?: string;
     completeUrl?: string;
     cancelUrl?: string;
-    expireAt?: number;
-    allowedPaymentMethods?: string[];
 }
-export interface ListPaymentsParams {
-    limit?: number;
-    offset?: number;
+export interface SendPaymentLinkInput {
+    chargeId: string;
+    customerEmail?: string;
+    customerPhone?: string;
+}
+export interface KPIParams {
+    start?: number;
+    end?: number;
+    interval?: "hour" | "day" | "week" | "month";
+    timezone?: string;
+    currency?: string;
+}
+export interface SubscriptionFilters {
     status?: string;
-    fromDate?: string;
-    toDate?: string;
-    orderId?: string;
+    search?: string;
+    size?: number;
+    from?: number;
 }
-export interface ListSubscriptionsParams {
-    limit?: number;
-    offset?: number;
-    status?: string;
-}
-export declare class MoneiApiClient {
-    private readonly baseUrl;
-    private readonly accessToken;
-    constructor(accessToken: string, baseUrl?: string);
-    /**
-     * Create a payment (generates a payment link via nextAction.redirectUrl)
-     */
-    createPayment(params: CreatePaymentLinkParams): Promise<MoneiPayment>;
-    /**
-     * Get a single payment by ID
-     */
-    getPayment(paymentId: string): Promise<MoneiPayment>;
-    /**
-     * List payments with optional filters
-     */
-    listPayments(params?: ListPaymentsParams): Promise<MoneiListResponse<MoneiPayment>>;
-    /**
-     * Get a single subscription by ID
-     */
-    getSubscription(subscriptionId: string): Promise<MoneiSubscription>;
-    /**
-     * List subscriptions with optional filters
-     */
-    listSubscriptions(params?: ListSubscriptionsParams): Promise<MoneiListResponse<MoneiSubscription>>;
-    /**
-     * Get merchant account information
-     */
-    getAccountInfo(): Promise<Record<string, unknown>>;
-    private request;
-    private toQueryString;
-}
-export declare class MoneiApiError extends Error {
-    readonly statusCode: number;
-    readonly responseBody: string;
-    constructor(message: string, statusCode: number, responseBody: string);
+export declare class MoneiGraphQLClient {
+    private apiKey;
+    private endpoint;
+    constructor(config: MoneiClientConfig);
+    execute<T = unknown>(query: string, variables?: Record<string, unknown>): Promise<T>;
+    getAccount(): Promise<unknown>;
+    getCharge(id: string): Promise<unknown>;
+    listCharges(filters?: ChargeFilters): Promise<unknown>;
+    getChargesKPI(params?: KPIParams): Promise<unknown>;
+    createPayment(input: CreatePaymentInput): Promise<unknown>;
+    sendPaymentLink(input: SendPaymentLinkInput): Promise<unknown>;
+    getSubscription(id: string): Promise<unknown>;
+    listSubscriptions(filters?: SubscriptionFilters): Promise<unknown>;
+    introspect(): Promise<unknown>;
 }
 //# sourceMappingURL=monei-client.d.ts.map
