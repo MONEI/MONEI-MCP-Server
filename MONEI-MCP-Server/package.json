@@ -1,13 +1,12 @@
 {
   "name": "@monei/mcp-server",
-  "version": "0.2.0",
-  "description": "Connect your MONEI payment account to Claude & ChatGPT via MCP + OAuth 2.0 (GraphQL native)",
+  "version": "0.1.0",
+  "description": "MONEI MCP Server — Connect your MONEI account to AI assistants (Claude, ChatGPT) via OAuth 2.0",
   "keywords": [
     "monei",
     "mcp",
     "model-context-protocol",
     "payments",
-    "graphql",
     "oauth",
     "ai",
     "claude",
@@ -19,7 +18,7 @@
     "type": "git",
     "url": "https://github.com/MONEI/MONEI-MCP-Server.git"
   },
-  "homepage": "https://docs.monei.com",
+  "homepage": "https://github.com/MONEI/MONEI-MCP-Server",
   "bugs": {
     "url": "https://github.com/MONEI/MONEI-MCP-Server/issues"
   },
@@ -45,15 +44,19 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "cors": "^2.8.5",
     "express": "^5.1.0",
-    "zod": "^3.25.76"
+    "helmet": "^8.1.0",
+    "zod": "^3.24.4"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
     "@types/express": "^5.0.2",
     "@types/node": "^22.15.2",
     "@vitest/coverage-v8": "^3.1.1",
+    "eslint": "^9.25.1",
     "tsx": "^4.19.4",
-    "typescript": "^5.8.3",
+    "typescript": "^5.9.3",
     "vitest": "^3.1.1"
   },
   "engines": {
