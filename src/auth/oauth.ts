@@ -1,230 +1,47 @@
-/**
- * OAuth 2.0 Authorization Provider
- *
- * Implements the OAuth 2.0 authorization code flow with PKCE (RFC 7636)
- * for connecting merchant MONEI accounts to AI assistants.
- *
- * Flow:
- *  1. Server creates session with state + PKCE challenge
- *  2. AI assistant redirects merchant to /oauth/authorize
- *  3. Merchant logs into MONEI and grants scopes
- *  4. MONEI redirects back with authorization code + state
- *  5. Server validates state, exchanges code + PKCE verifier for tokens
- *  6. Tokens are scoped to allowed operations only
- */
-
 import type { OAuthTokens, ServerConfig } from "../types/index.js";
-import { createOAuthSession, consumeOAuthSession } from "./session.js";
+import { generateCodeVerifier, generateCodeChallenge } from "./pkce.js";
 
-/**
- * OAuth scopes that map to allowed MCP operations.
- * These are the ONLY scopes the server will request.
- */
-export const ALLOWED_SCOPES = [
-  "payments:read",       // Get/list payments
-  "payments:create",     // Create payment links only
-  "subscriptions:read",  // Get/list subscriptions
-  "account:read",        // Read account info
-] as const;
+export const ALLOWED_SCOPES = ["payments:read", "payments:create", "subscriptions:read", "account:read"] as const;
 
-export type AllowedScope = (typeof ALLOWED_SCOPES)[number];
-
-/**
- * In-memory token store.
- * TODO: Replace with persistent encrypted storage (Redis, DB) for production.
- */
 const tokenStore = new Map<string, OAuthTokens>();
+const pkceStore = new Map<string, string>();
 
-/**
- * Generate the MONEI OAuth authorization URL with PKCE + state
- *
- * @returns Object containing the authorization URL and the state for later validation
- */
-export function getAuthorizationUrl(config: ServerConfig): {
-  url: string;
-  state: string;
-} {
-  const session = createOAuthSession();
+export function getAuthorizationUrl(config: ServerConfig, state: string): string {
+  const codeVerifier = generateCodeVerifier();
+  const codeChallenge = generateCodeChallenge(codeVerifier);
+  pkceStore.set(state, codeVerifier);
 
   const params = new URLSearchParams({
-    client_id: config.oauth.clientId,
-    redirect_uri: config.oauth.redirectUri,
-    response_type: "code",
-    scope: ALLOWED_SCOPES.join(" "),
-    state: session.state,
-    code_challenge: session.codeChallenge,
-    code_challenge_method: "S256",
+    client_id: config.oauth.clientId, redirect_uri: config.oauth.redirectUri,
+    response_type: "code", scope: ALLOWED_SCOPES.join(" "), state,
+    code_challenge: codeChallenge, code_challenge_method: "S256",
   });
-
-  // TODO: Update with actual MONEI OAuth endpoint when available
-  return {
-    url: `https://auth.monei.com/oauth/authorize?${params.toString()}`,
-    state: session.state,
-  };
+  return `https://auth.monei.com/oauth/authorize?${params.toString()}`;
 }
 
-/**
- * Exchange authorization code for tokens.
- * Validates state parameter and includes PKCE code_verifier.
- */
-export async function exchangeCodeForTokens(
-  config: ServerConfig,
-  code: string,
-  state: string
-): Promise<OAuthTokens> {
-  // Validate and consume the session (single-use state)
-  const session = consumeOAuthSession(state);
-  if (!session) {
-    throw new OAuthError(
-      "Invalid or expired OAuth state. This may indicate a CSRF attack or an expired authorization. Please try again.",
-      "invalid_state"
-    );
-  }
+export async function exchangeCodeForTokens(config: ServerConfig, code: string, state: string): Promise<OAuthTokens> {
+  const codeVerifier = pkceStore.get(state);
+  pkceStore.delete(state);
 
-  // TODO: Update with actual MONEI OAuth token endpoint
+  const body: Record<string, string> = {
+    grant_type: "authorization_code", client_id: config.oauth.clientId,
+    client_secret: config.oauth.clientSecret, redirect_uri: config.oauth.redirectUri, code,
+  };
+  if (codeVerifier) body.code_verifier = codeVerifier;
+
   const response = await fetch("https://auth.monei.com/oauth/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grant_type: "authorization_code",
-      client_id: config.oauth.clientId,
-      client_secret: config.oauth.clientSecret,
-      redirect_uri: config.oauth.redirectUri,
-      code,
-      code_verifier: session.codeVerifier,
-    }),
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   });
+  if (!response.ok) throw new Error(`OAuth token exchange failed: ${await response.text()}`);
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new OAuthError(
-      `Token exchange failed: ${error}`,
-      "token_exchange_failed"
-    );
-  }
-
-  const data = (await response.json()) as {
-    access_token: string;
-    refresh_token?: string;
-    expires_in: number;
-    scope: string;
-    account_id: string;
-  };
-
-  // Validate returned scopes don't exceed what we requested
-  const returnedScopes = data.scope.split(" ");
-  const allowedSet = new Set<string>(ALLOWED_SCOPES);
-  const excessScopes = returnedScopes.filter((s) => !allowedSet.has(s));
-  if (excessScopes.length > 0) {
-    throw new OAuthError(
-      `Token contains unexpected scopes: ${excessScopes.join(", ")}`,
-      "scope_violation"
-    );
-  }
-
+  const data = (await response.json()) as { access_token: string; refresh_token?: string; expires_in: number; scope: string; account_id: string };
   const tokens: OAuthTokens = {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
-    expiresAt: Date.now() + data.expires_in * 1000,
-    scope: data.scope,
-    accountId: data.account_id,
+    accessToken: data.access_token, refreshToken: data.refresh_token,
+    expiresAt: Date.now() + data.expires_in * 1000, scope: data.scope, accountId: data.account_id,
   };
-
   tokenStore.set(tokens.accountId, tokens);
   return tokens;
 }
 
-/**
- * Refresh an expired access token
- */
-export async function refreshAccessToken(
-  config: ServerConfig,
-  accountId: string
-): Promise<OAuthTokens> {
-  const existing = tokenStore.get(accountId);
-  if (!existing?.refreshToken) {
-    throw new OAuthError(
-      "No refresh token available. Re-authorization required.",
-      "no_refresh_token"
-    );
-  }
-
-  const response = await fetch("https://auth.monei.com/oauth/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grant_type: "refresh_token",
-      client_id: config.oauth.clientId,
-      client_secret: config.oauth.clientSecret,
-      refresh_token: existing.refreshToken,
-    }),
-  });
-
-  if (!response.ok) {
-    tokenStore.delete(accountId);
-    throw new OAuthError(
-      "Token refresh failed. Re-authorization required.",
-      "refresh_failed"
-    );
-  }
-
-  const data = (await response.json()) as {
-    access_token: string;
-    refresh_token?: string;
-    expires_in: number;
-    scope: string;
-    account_id: string;
-  };
-
-  const tokens: OAuthTokens = {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token ?? existing.refreshToken,
-    expiresAt: Date.now() + data.expires_in * 1000,
-    scope: data.scope,
-    accountId: data.account_id,
-  };
-
-  tokenStore.set(tokens.accountId, tokens);
-  return tokens;
-}
-
-/**
- * Retrieve stored tokens for an account
- */
-export function getTokens(accountId: string): OAuthTokens | undefined {
-  return tokenStore.get(accountId);
-}
-
-/**
- * Revoke tokens for an account
- */
-export function revokeTokens(accountId: string): boolean {
-  return tokenStore.delete(accountId);
-}
-
-/**
- * Check if tokens are expired (with 60s buffer)
- */
-export function isTokenExpired(tokens: OAuthTokens): boolean {
-  return Date.now() >= tokens.expiresAt - 60_000;
-}
-
-/**
- * Validate that requested scopes are within allowed set
- */
-export function validateScopes(requestedScopes: string[]): boolean {
-  const allowedSet = new Set<string>(ALLOWED_SCOPES);
-  return requestedScopes.every((scope) => allowedSet.has(scope));
-}
-
-// ─── Error Class ────────────────────────────────────────────
-
-export class OAuthError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string
-  ) {
-    super(message);
-    this.name = "OAuthError";
-  }
-}
+export function getStoredTokens(accountId: string): OAuthTokens | undefined { return tokenStore.get(accountId); }
+export function revokeTokens(accountId: string): void { tokenStore.delete(accountId); }

@@ -1,57 +1,44 @@
 # Security Policy
 
-## Supported Versions
-
-| Version | Supported          |
-|---------|--------------------|
-| 0.1.x   | ✅ Current          |
-
 ## Reporting a Vulnerability
 
-**Do NOT open a public GitHub issue for security vulnerabilities.**
+If you discover a security vulnerability, please report it responsibly:
 
-If you discover a security vulnerability in the MONEI MCP Server, please report it responsibly:
+**Email:** [security@monei.com](mailto:security@monei.com)
 
-1. **Email:** Send details to [security@monei.com](mailto:security@monei.com)
-2. **Subject:** `[SECURITY] MONEI MCP Server — <brief description>`
-3. **Include:**
-   - Description of the vulnerability
-   - Steps to reproduce
-   - Potential impact
-   - Suggested fix (if any)
-
-We will acknowledge your report within **48 hours** and aim to provide a fix within **7 business days** for critical issues.
+Please **do not** open a public issue for security vulnerabilities. We will respond within 48 hours and coordinate a fix before any public disclosure.
 
 ## Security Architecture
 
-### Authentication & Authorization
-- OAuth 2.0 with PKCE (RFC 7636) for merchant authentication
-- Single-use state parameters to prevent CSRF attacks
-- Scoped tokens — only `payments:read`, `payments:create`, `subscriptions:read`, and `account:read`
-- Token refresh with automatic revocation on failure
+The MONEI MCP Server is designed with defense-in-depth for financial operations:
 
 ### Restricted Operations
-The following operations are **hard-blocked at the server level** and cannot be executed through the MCP server under any circumstances:
+Refunds, charges, payouts, subscription cancellations, and account modifications are **hard-blocked at the server level**. Even manually crafted tool calls are rejected with a clear message pointing to the [MONEI Dashboard](https://dashboard.monei.com). This is not configurable — it's enforced in code.
 
-- Refund payments
-- Charge cards or Bizum
-- Card or Bizum payouts
-- Cancel/delete subscriptions
-- Modify account settings
+### Authentication
+- **OAuth 2.0 + PKCE** (RFC 7636) — Proof Key for Code Exchange prevents authorization code interception
+- **Single-use state tokens** — CSRF protection via time-limited, one-use OAuth state parameters
+- **Scoped access** — OAuth tokens are limited to read + payment-link-creation scopes only
+- **API key isolation** — Keys are server-side only, never exposed in tool responses
 
 ### Transport Security
-- Helmet.js for HTTP security headers (CSP, X-Frame-Options, HSTS, etc.)
-- CORS with strict origin allowlist
-- HTTPS enforcement in production with HSTS preload
-- 1MB request body limit
-- Content-Type validation on POST requests
+- **Streamable HTTP** — Modern MCP transport with per-request isolation
+- **HTTPS enforced** — Production server at `mcp.monei.com` is TLS-only
+- **Security headers** — HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy
+- **Body size limits** — Requests over 512KB are rejected
 
-### Operational Security
-- Per-account sliding-window rate limiting
-- Structured audit logging for every tool invocation
-- Session validation on all `/messages` requests
-- Automatic session cleanup on disconnect
+### Monitoring
+- **Rate limiting** — Per-account sliding window (60 req/min) prevents abuse
+- **Audit logging** — Every tool call logged with timestamp, account ID, tool name, duration, and sanitized parameters
+- **Weekly schema checks** — CI automatically detects new GraphQL operations and flags them for review
 
-## Scope
+## Supported Versions
 
-This security policy covers the MONEI MCP Server codebase. For vulnerabilities in the MONEI API itself, the MONEI Dashboard, or other MONEI products, please contact [security@monei.com](mailto:security@monei.com) directly.
+| Version | Status |
+|---------|--------|
+| 0.2.x   | ✅ Active development |
+| 0.1.x   | ⚠️ Deprecated — uses non-existent REST endpoints |
+
+## Compliance
+
+MONEI Digital Payments, S.L. is a Payment Institution regulated by [Banco de España](https://www.bde.es) (license #6911), PCI DSS Level 1 certified, and a member of Servired and the European Payments Council (SRTP group).
